@@ -1,5 +1,5 @@
 import streamlit as st
-from google import genai
+import google.generativeai as genai
 import json
 import docx
 
@@ -13,7 +13,9 @@ st.write("Tải lên file đề thi Word (.docx) để AI tự động chuyển 
 api_key = "AQ.Ab8RN6Ll0xWNHUjSJGX6iYevM-hIK7k3Hp97XJBJ_n_fMntKbw"
 
 try:
-    client = genai.Client(api_key=api_key)
+    genai.configure(api_key=api_key)
+    # Sử dụng model flash chuẩn
+    model = genai.GenerativeModel("gemini-2.5-flash")
 
     uploaded_file = st.file_uploader("Chọn file đề thi Word", type=["docx"])
 
@@ -27,7 +29,6 @@ try:
                     doc = docx.Document(uploaded_file)
                     file_content = "\n".join([paragraph.text for paragraph in doc.paragraphs])
 
-                    # Xây dựng prompt an toàn không bị lỗi ký tự ngoặc nhọn
                     json_example = """[
                       {
                         "id": 1,
@@ -51,10 +52,7 @@ try:
                         "Nội dung đề thi:\n" + file_content
                     )
 
-                    response = client.models.generate_content(
-                        model="gemini-3.8-flash",
-                        contents=prompt
-                    )
+                    response = model.generate_content(prompt)
 
                     # Xử lý chuỗi JSON kết quả
                     json_text = response.text.strip()
