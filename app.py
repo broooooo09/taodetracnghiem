@@ -17,7 +17,7 @@ except ImportError:
     Document = None
 
 st.set_page_config(
-    page_title="AI Quiz - Đề Trắc Nghiệm Tự Động",
+    page_title="AI Quiz - Trích xuất đề trắc nghiệm",
     page_icon="🧠",
     layout="wide",
 )
@@ -74,7 +74,7 @@ def extract_text(uploaded_file):
     else:
         raise ValueError("Định dạng chưa hỗ trợ. Hãy tải lên PDF, DOCX, TXT hoặc MD.")
     
-    # Làm sạch khoảng trắng thừa để tiết kiệm token và đọc được nhiều nội dung hơn
+    # Làm sạch khoảng trắng thừa để tiết kiệm token
     text = re.sub(r'\n\s*\n', '\n', text)
     return text
 
@@ -95,34 +95,35 @@ def clean_json(text):
     except json.JSONDecodeError as e:
         raise ValueError(f"Lỗi đọc dữ liệu JSON từ AI: {e}")
 
-def make_quiz(source_text, difficulty, topic, model):
+def make_quiz(source_text, count, difficulty, topic, model):
     api_key = get_api_key()
     if not api_key:
         raise ValueError("Chưa có Groq API key trong code.")
     client = Groq(api_key=api_key)
     
-    # Mở rộng giới hạn đọc nội dung tài liệu lên 20,000 ký tự (đã tối ưu token)
-    source_text = source_text[:20000]
+    # Mở rộng dung lượng đọc file lên 35000 ký tự để quét được toàn bộ các câu hỏi trong file lớn
+    source_text = source_text[:35000]
     
     prompt = f"""
-Bạn là giáo viên thông minh. Hãy đọc kỹ TOÀN BỘ nội dung tài liệu bên dưới từ đầu đến cuối để nắm bắt đầy đủ ý chính.
-Nhiệm vụ của bạn là tạo ra một bộ đề kiểm tra hoàn toàn bằng **định dạng trắc nghiệm 4 lựa chọn (A, B, C, D)**.
+Tài liệu dưới đây là một ngân hàng câu hỏi/đề thi trắc nghiệm. 
+Nhiệm vụ của bạn là đọc và TRÍCH XUẤT chính xác **{count} câu hỏi trắc nghiệm** (có đủ 4 lựa chọn A, B, C, D) từ tài liệu này. 
 
 QUY TẮC BẮT BUỘC:
-1. Số lượng câu hỏi phù hợp (từ 15 đến 30 câu bao phủ toàn bộ các phần của tài liệu).
-2. 100% câu hỏi, các lựa chọn và đáp án phải được lấy TRỰC TIẾP và HOÀN TOÀN từ tài liệu. Tuyệt đối không bịa đặt.
-3. Độ khó mong muốn: {difficulty}.
-4. Chủ đề: {topic or 'Tự xác định theo tài liệu'}.
+1. Trích xuất đúng số lượng {count} câu hỏi (hoặc tối đa có thể dựa trên tài liệu nếu tài liệu ít hơn).
+2. Định dạng bắt buộc: Trắc nghiệm 4 lựa chọn (A, B, C, D).
+3. 100% nội dung câu hỏi, đáp án đúng phải căn cứ chính xác vào tài liệu, tuyệt đối không bịa đặt.
+4. Độ khó: {difficulty}.
+5. Chủ đề: {topic or 'Tự xác định theo tài liệu'}.
 
 Chỉ trả về JSON hợp lệ, đúng cấu trúc sau:
 {{
-  "title": "Tên đề kiểm tra trắc nghiệm",
+  "title": "Đề trắc nghiệm trích xuất từ tài liệu",
   "questions": [
     {{
-      "question": "Nội dung câu hỏi trắc nghiệm lấy sát tài liệu",
+      "question": "Nội dung câu hỏi trắc nghiệm",
       "options": {{"A":"...", "B":"...", "C":"...", "D":"..."}},
       "answer": "A",
-      "explanation": "Giải thích ngắn gọn dựa hoàn toàn trên tài liệu"
+      "explanation": "Giải thích ngắn gọn dựa trên tài liệu"
     }}
   ]
 }}
@@ -132,14 +133,17 @@ TÀI LIỆU:
 {source_text}
 ---
 """
+    # Tính toán max_tokens linh hoạt dựa trên số lượng câu hỏi để không bị cắt cụt giữa chừng
+    dynamic_max_tokens = min(8192, int(count) * 160 + 1000)
+    
     result = client.chat.completions.create(
         model=model,
         messages=[
-            {"role": "system", "content": "Bạn là chuyên gia ra đề thi trắc nghiệm. Hãy đọc kỹ toàn bộ tài liệu và trả về JSON chuẩn xác."},
+            {"role": "system", "content": "Bạn là chuyên gia trích xuất đề thi. Hãy lấy chính xác các câu hỏi trắc nghiệm và trả về JSON chuẩn xác."},
             {"role": "user", "content": prompt},
         ],
-        temperature=0.2,
-        max_tokens=4000,
+        temperature=0.1,
+        max_tokens=dynamic_max_tokens,
         response_format={"type": "json_object"},
     )
     raw_content = result.choices[0].message.content or ""
@@ -147,7 +151,7 @@ TÀI LIỆU:
     
     questions = data.get("questions", [])
     if not questions:
-        raise ValueError("AI không trả về câu hỏi nào từ tài liệu.")
+        raise ValueError("AI không trích xuất được câu hỏi nào từ tài liệu.")
     
     valid = []
     for q in questions:
@@ -175,27 +179,29 @@ def check_answer(q, chosen):
 
 st.markdown("""
 <div class="hero">
-  <h1>🧠 AI Quiz Trắc Nghiệm</h1>
-  <div>Hệ thống đọc toàn bộ tài liệu và tự động tạo đề trắc nghiệm chuẩn xác</div>
+  <h1>🧠 AI Trích Xuất Đề Trắc Nghiệm</h1>
+  <div>Hệ thống quét và lấy trọn vẹn số lượng câu hỏi trắc nghiệm từ file của bạn</div>
 </div>
 """, unsafe_allow_html=True)
 
 with st.sidebar:
-    st.header("⚙️ Cài đặt chung")
-    difficulty = st.selectbox("Độ khó", ["Cơ bản", "Trung bình", "Nâng cao", "Hỗn hợp"])
-    topic = st.text_input("Chủ đề (không bắt buộc)", placeholder="Ví dụ: Chương 1 - Lịch sử")
+    st.header("⚙️ Cài đặt đề")
+    # Cho phép người dùng chọn chính xác số lượng câu hỏi muốn lấy từ file lớn
+    question_count = st.number_input("Số lượng câu hỏi muốn lấy", min_value=5, max_value=150, value=30, step=5)
+    difficulty = st.selectbox("Độ khó", ["Giữ nguyên như tài liệu", "Cơ bản", "Trung bình", "Nâng cao"])
+    topic = st.text_input("Chủ đề (không bắt buộc)", placeholder="Ví dụ: Bài 1 - 4")
     model = st.text_input("Groq model", value=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"))
-    st.info("💡 **Chế độ:** Chỉ tạo câu hỏi **Trắc nghiệm 4 lựa chọn (A, B, C, D)** và quét sâu toàn bộ nội dung tài liệu.")
+    st.info("💡 **Mẹo:** Bạn có thể tăng 'Số lượng câu hỏi muốn lấy' lên (ví dụ 50, 80 hoặc 100 câu) để trích xuất gần hết các câu có trong file.")
 
 tab_create, tab_quiz, tab_history = st.tabs(["📚 Tạo đề", "✍️ Làm bài", "📊 Lịch sử phiên"])
 
 with tab_create:
-    st.subheader("Tạo đề trắc nghiệm từ tài liệu")
-    st.write("Tải lên file tài liệu (PDF, DOCX, TXT, MD). AI sẽ tự động phân tích toàn bộ văn bản để ra đề.")
+    st.subheader("Trích xuất đề từ tài liệu có sẵn")
+    st.write("Tải lên file Word/PDF chứa bộ câu hỏi. Hệ thống sẽ quét và trích xuất đúng số lượng câu hỏi trắc nghiệm bạn muốn.")
     uploaded = st.file_uploader("Chọn tài liệu", type=["pdf", "docx", "txt", "md"])
-    pasted = st.text_area("Hoặc dán nội dung tài liệu vào đây", height=180, placeholder="Dán nội dung bài học...")
+    pasted = st.text_area("Hoặc dán nội dung tài liệu vào đây", height=180, placeholder="Dán nội dung câu hỏi...")
     
-    if st.button("✨ Tạo đề trắc nghiệm ngay", type="primary", use_container_width=True):
+    if st.button("✨ Tiến hành trích xuất đề", type="primary", use_container_width=True):
         try:
             source = pasted.strip()
             if uploaded is not None:
@@ -205,14 +211,14 @@ with tab_create:
             if len(source) < 50:
                 st.error("Tài liệu quá ngắn. Hãy tải file hoặc dán ít nhất vài đoạn nội dung.")
             else:
-                with st.spinner("AI đang đọc toàn bộ tài liệu và thiết kế đề trắc nghiệm..."):
-                    quiz = make_quiz(source, difficulty, topic, model.strip())
+                with st.spinner(f"AI đang quét file và trích xuất {int(question_count)} câu hỏi trắc nghiệm..."):
+                    quiz = make_quiz(source, int(question_count), difficulty, topic, model.strip())
                 st.session_state.quiz = quiz
                 st.session_state.answers = {}
                 st.session_state.submitted = False
-                st.success(f"Đã tạo thành công đề thi với {len(quiz['questions'])} câu hỏi trắc nghiệm! Mở tab “Làm bài” để bắt đầu.")
+                st.success(f"Đã trích xuất thành công {len(quiz['questions'])} câu hỏi trắc nghiệm! Mở tab “Làm bài” để bắt đầu.")
         except Exception as exc:
-            st.error(f"Không tạo được đề: {exc}")
+            st.error(f"Không trích xuất được đề: {exc}")
             st.info("Kiểm tra lại kết nối mạng, API key hoặc định dạng file tài liệu.")
 
 with tab_quiz:
@@ -287,4 +293,4 @@ with tab_history:
     else:
         st.dataframe(st.session_state.history, use_container_width=True, hide_index=True)
 
-st.caption("Lưu ý: Đề kiểm tra trắc nghiệm được hệ thống quét và trích xuất hoàn toàn bám sát tài liệu gốc.")
+st.caption("Lưu ý: Hệ thống trích xuất hoàn toàn bám sát các câu hỏi trắc nghiệm có sẵn trong tài liệu.")
