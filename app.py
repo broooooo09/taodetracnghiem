@@ -51,7 +51,7 @@ try:
                         "(Lưu ý: Trường \"answer\" là đáp án đúng nếu có trong đề, nếu không có hãy để trống hoặc đoán dựa trên nội dung)."
                     )
 
-                    # TRƯỜNG HỢP 1: NẾU LÀ FILE ẢNH (Dùng mô hình Vision của Groq)
+                    # TRƯỜNG HỢP 1: NẾU LÀ FILE ẢNH
                     if file_extension in ["png", "jpg", "jpeg"]:
                         image_bytes = uploaded_file.getvalue()
                         base64_image = base64.b64encode(image_bytes).decode('utf-8')
@@ -97,7 +97,7 @@ try:
                                 {"role": "system", "content": "Bạn là chuyên gia trích xuất dữ liệu đề thi sang định dạng JSON chính xác."},
                                 {"role": "user", "content": full_prompt}
                             ],
-                            model="llama-3.3-70b-versatile",
+                            model="llama-3.1-8b-instant",
                         )
                         response_text = chat_completion.choices[0].message.content.strip()
 
