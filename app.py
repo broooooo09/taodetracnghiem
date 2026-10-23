@@ -155,7 +155,7 @@ with st.sidebar:
     question_count = st.slider("Số câu hỏi", min_value=5, max_value=30, value=10, step=5)
     difficulty = st.selectbox("Độ khó", ["Cơ bản", "Trung bình", "Nâng cao", "Hỗn hợp"])
     topic = st.text_input("Chủ đề (không bắt buộc)", placeholder="Ví dụ: Sinh học tế bào")
-    model = st.text_input("Groq model", value=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"))
+    model = st.text_input("Groq model", value=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"))
     st.caption("API key chỉ đặt trong Secrets, không ghi trực tiếp vào code.")
 
 tab_create, tab_quiz, tab_history = st.tabs(["📚 Tạo đề", "✍️ Làm bài", "📊 Lịch sử phiên"])
