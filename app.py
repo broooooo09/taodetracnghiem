@@ -3,13 +3,12 @@ from groq import Groq
 import json
 import docx
 from pypdf import PdfReader
-import base64
 
 # Cấu hình trang web
 st.set_page_config(page_title="AI Tạo Đề Trắc Nghiệm Đa Định Dạng", layout="wide")
 
 st.title("📚 Trợ Lý AI Chuyển Đổi Đề Trắc Nghiệm (All-in-One)")
-st.write("Hỗ trợ tải lên mọi loại file đề thi: Word (.docx), PDF, Văn bản (.txt) và Ảnh chụp đề (.png, .jpg).")
+st.write("Hỗ trợ tải lên mọi loại file đề thi: Word (.docx), PDF, Văn bản (.txt).")
 
 # Tích hợp sẵn Groq API Key của bạn
 api_key = "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"
@@ -17,8 +16,8 @@ api_key = "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"
 try:
     client = Groq(api_key=api_key)
 
-    # Cho phép chọn nhiều định dạng file
-    uploaded_file = st.file_uploader("Chọn file đề thi", type=["docx", "pdf", "txt", "png", "jpg", "jpeg"])
+    # Cho phép chọn định dạng file
+    uploaded_file = st.file_uploader("Chọn file đề thi", type=["docx", "pdf", "txt"])
 
     if uploaded_file is not None:
         st.success(f"Đã tải lên: {uploaded_file.name}")
@@ -29,7 +28,7 @@ try:
                     file_extension = uploaded_file.name.split('.')[-1].lower()
                     file_content = ""
 
-                    # Trích xuất nội dung từ các định dạng file khác nhau
+                    # Trích xuất nội dung từ các định dạng file
                     if file_extension == "docx":
                         doc = docx.Document(uploaded_file)
                         file_content = "\n".join([p.text for p in doc.paragraphs])
@@ -41,9 +40,6 @@ try:
                                 file_content += text + "\n"
                     elif file_extension == "txt":
                         file_content = uploaded_file.getvalue().decode("utf-8")
-                    elif file_extension in ["png", "jpg", "jpeg"]:
-                        # Đối với ảnh, tạm thời thông báo hoặc chuyển đổi dạng text mô tả nếu cần
-                        file_content = "[Tệp hình ảnh được tải lên - Vui lòng ưu tiên sử dụng định dạng Word/PDF để có kết quả văn bản chính xác nhất]"
 
                     json_example = """[
                       {
@@ -68,12 +64,13 @@ try:
                         "Nội dung đề thi:\n" + file_content
                     )
 
+                    # Sử dụng mô hình chuẩn llama3-8b-8192 của Groq
                     chat_completion = client.chat.completions.create(
                         messages=[
                             {"role": "system", "content": "Bạn là chuyên gia trích xuất dữ liệu đề thi sang định dạng JSON chính xác."},
                             {"role": "user", "content": prompt}
                         ],
-                        model="llama-3.1-8b-instant",
+                        model="llama3-8b-8192",
                     )
                     response_text = chat_completion.choices[0].message.content.strip()
 
