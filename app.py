@@ -36,29 +36,28 @@ def call_groq_ai(text_content):
     client = Groq(api_key=API_KEY)
     
     json_structure_example = """[
-      {
-        "id": 1,
-        "question": "Nội dung câu hỏi?",
-        "options": {
-          "A": "Đáp án A",
-          "B": "Đáp án B",
-          "C": "Đáp án C",
-          "D": "Đáp án D"
-        },
-        "answer": "A"
-      }
-    ]"""
+  {
+    "id": 1,
+    "question": "Nội dung câu hỏi?",
+    "options": {
+      "A": "Đáp án A",
+      "B": "Đáp án B",
+      "C": "Đáp án C",
+      "D": "Đáp án D"
+    },
+    "answer": "A"
+  }
+]"""
 
-    prompt = f"""
-    Bạn là một chuyên gia khảo thí giáo dục. Hãy đọc kỹ nội dung đề thi bên dưới, trích xuất toàn bộ các câu hỏi trắc nghiệm.
-    Kết quả trả về PHẢI LÀ MỘT MẢNG JSON (JSON array) thuần túy tuân thủ chính xác cấu trúc mẫu sau, tuyệt đối không kèm theo bất kỳ văn bản chào hỏi hay giải thích nào khác ngoài JSON:
-    {json_structure_example}
+    # Sử dụng nối chuỗi an toàn tuyệt đối không dùng f-string chứa ngoặc nhọn
+    prompt = (
+        "Bạn là một chuyên gia khảo thí giáo dục. Hãy đọc kỹ nội dung đề thi bên dưới và trích xuất toàn bộ các câu hỏi trắc nghiệm.\n"
+        "Kết quả trả về PHẢI LÀ MẢNG JSON thuần túy tuân thủ chính xác cấu trúc mẫu sau, tuyệt đối không kèm theo bất kỳ văn bản nào khác ngoài JSON:\n"
+        + json_structure_example + "\n\n"
+        "Nội dung đề thi cần xử lý:\n"
+        + text_content
+    )
 
-    Nội dung đề thi cần xử lý:
-    {text_content}
-    """
-
-    # Danh sách các model chuẩn hiện tại của Groq để tự động chuyển đổi nếu cần
     models = ["llama-3.1-8b-instant", "llama3-70b-8192"]
     
     for model_name in models:
@@ -73,7 +72,6 @@ def call_groq_ai(text_content):
             ]
             response_content = completion.choices[0].message.content.strip()
             
-            # Làm sạch chuỗi markdown JSON nếu AI vô tình trả về
             if response_content.startswith("```json"):
                 response_content = response_content[7:]
             if response_content.endswith("```"):
@@ -139,7 +137,6 @@ if "quiz_data" in st.session_state:
                 label_visibility="collapsed"
             )
             
-            # Lấy ký tự đầu tiên (A, B, C, D) làm đáp án người dùng chọn
             user_selections[q_id] = selected_option[0] if selected_option else ""
             st.write("")
 
