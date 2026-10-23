@@ -4,134 +4,155 @@ import json
 import docx
 from pypdf import PdfReader
 
-# Cấu hình trang web
-st.set_page_config(page_title="AI Tạo Đề Trắc Nghiệm Đa Định Dạng", layout="wide")
+# Cấu hình giao diện trang web
+st.set_page_config(page_title="Hệ Thống Trắc Nghiệm AI", layout="wide")
 
-st.title("📚 Trợ Lý AI Chuyển Đổi Đề Trắc Nghiệm (All-in-One)")
-st.write("Hỗ trợ tải lên mọi loại file đề thi: Word (.docx), PDF, Văn bản (.txt).")
+st.title("📚 Trợ Lý AI Chuyển Đổi Đề Trắc Nghiệm")
+st.write("Tải lên đề thi (Word, PDF, TXT) để tự động hóa giao diện làm bài trực tuyến.")
 
-# Tích hợp sẵn Groq API Key của bạn
-api_key = "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"
+# Tích hợp sẵn API Key
+API_KEY = "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"
 
-try:
-    client = Groq(api_key=api_key)
+def extract_text_from_file(uploaded_file):
+    filename = uploaded_file.name.lower()
+    content = ""
+    try:
+        if filename.endswith(".docx"):
+            doc = docx.Document(uploaded_file)
+            content = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
+        elif filename.endswith(".pdf"):
+            reader = PdfReader(uploaded_file)
+            for page in reader.pages:
+                text = page.extract_text()
+                if text:
+                    content += text + "\n"
+        elif filename.endswith(".txt"):
+            content = uploaded_file.getvalue().decode("utf-8")
+    except Exception as e:
+        st.error(f"Lỗi đọc file: {e}")
+    return content
 
-    # Cho phép chọn định dạng file
-    uploaded_file = st.file_uploader("Chọn file đề thi", type=["docx", "pdf", "txt"])
+def call_groq_ai(text_content):
+    client = Groq(api_key=API_KEY)
+    
+    json_structure_example = """[
+      {
+        "id": 1,
+        "question": "Nội dung câu hỏi?",
+        "options": {
+          "A": "Đáp án A",
+          "B": "Đáp án B",
+          "C": "Đáp án C",
+          "D": "Đáp án D"
+        },
+        "answer": "A"
+      }
+    ]"""
 
-    if uploaded_file is not None:
-        st.success(f"Đã tải lên: {uploaded_file.name}")
-        
-        if st.button("🚀 Xử lý và tạo đề trắc nghiệm"):
-            with st.spinner("AI đang đọc và phân tích nội dung tài liệu..."):
+    prompt = f"""
+    Bạn là một chuyên gia khảo thí giáo dục. Hãy đọc kỹ nội dung đề thi bên dưới, trích xuất toàn bộ các câu hỏi trắc nghiệm.
+    Kết quả trả về PHẢI LÀ MỘT MẢNG JSON (JSON array) thuần túy tuân thủ chính xác cấu trúc mẫu sau, tuyệt đối không kèm theo bất kỳ văn bản chào hỏi hay giải thích nào khác ngoài JSON:
+    {json_structure_example}
+
+    Nội dung đề thi cần xử lý:
+    {text_content}
+    """
+
+    # Danh sách các model chuẩn hiện tại của Groq để tự động chuyển đổi nếu cần
+    models = ["llama-3.1-8b-instant", "llama3-70b-8192"]
+    
+    for model_name in models:
+        try:
+            completion = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that outputs JSON only."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1
+            ]
+            response_content = completion.choices[0].message.content.strip()
+            
+            # Làm sạch chuỗi markdown JSON nếu AI vô tình trả về
+            if response_content.startswith("```json"):
+                response_content = response_content[7:]
+            if response_content.endswith("```"):
+                response_content = response_content[:-3]
+                
+            data = json.loads(response_content.strip())
+            if isinstance(data, dict):
+                for val in data.values():
+                    if isinstance(val, list):
+                        return val
+            if isinstance(data, list):
+                return data
+        except Exception:
+            continue
+            
+    raise Exception("Không thể trích xuất dữ liệu từ AI. Vui lòng kiểm tra lại nội dung file.")
+
+# Giao diện chính tải file
+uploaded_file = st.file_uploader("Chọn file đề thi của bạn", type=["docx", "pdf", "txt"])
+
+if uploaded_file is not None:
+    st.success(f"Đã nhận file: {uploaded_file.name}")
+    
+    if st.button("🚀 Phân tích và tạo đề thi"):
+        with st.spinner("Hệ thống đang trích xuất câu hỏi bằng AI..."):
+            extracted_text = extract_text_from_file(uploaded_file)
+            
+            if extracted_text.strip() == "":
+                st.warning("File không có nội dung hoặc không đọc được văn bản.")
+            else:
                 try:
-                    file_extension = uploaded_file.name.split('.')[-1].lower()
-                    file_content = ""
+                    quiz_items = call_groq_ai(extracted_text)
+                    st.session_state["quiz_data"] = quiz_items
+                    st.success("Tạo đề thi thành công!")
+                except Exception as err:
+                    st.error(f"Đã xảy ra lỗi: {err}")
 
-                    # Trích xuất nội dung từ các định dạng file
-                    if file_extension == "docx":
-                        doc = docx.Document(uploaded_file)
-                        file_content = "\n".join([p.text for p in doc.paragraphs])
-                    elif file_extension == "pdf":
-                        reader = PdfReader(uploaded_file)
-                        for page in reader.pages:
-                            text = page.extract_text()
-                            if text:
-                                file_content += text + "\n"
-                    elif file_extension == "txt":
-                        file_content = uploaded_file.getvalue().decode("utf-8")
+# Giao diện thi trực tuyến giống Azota
+if "quiz_data" in st.session_state:
+    st.markdown("---")
+    st.subheader("📝 Giao diện làm bài trực tuyến")
+    
+    user_selections = {}
+    with st.form("exam_form"):
+        for index, item in enumerate(st.session_state["quiz_data"]):
+            q_id = item.get('id', index + 1)
+            q_title = item.get('question', '')
+            options = item.get('options', {})
+            
+            st.markdown(f"**Câu {q_id}: {q_title}**")
+            
+            choice_list = [
+                f"A. {options.get('A', '')}",
+                f"B. {options.get('B', '')}",
+                f"C. {options.get('C', '')}",
+                f"D. {options.get('D', '')}"
+            ]
+            
+            selected_option = st.radio(
+                f"Chọn đáp án câu {q_id}",
+                choice_list,
+                key=f"question_{q_id}",
+                label_visibility="collapsed"
+            )
+            
+            # Lấy ký tự đầu tiên (A, B, C, D) làm đáp án người dùng chọn
+            user_selections[q_id] = selected_option[0] if selected_option else ""
+            st.write("")
 
-                    json_example = """[
-                      {
-                        "id": 1,
-                        "question": "Nội dung câu hỏi?",
-                        "options": {
-                          "A": "Đáp án A",
-                          "B": "Đáp án B",
-                          "C": "Đáp án C",
-                          "D": "Đáp án D"
-                        },
-                        "answer": "A"
-                      }
-                    ]"""
-
-                    prompt = (
-                        "Hãy đọc kỹ nội dung đề thi trắc nghiệm dưới đây. "
-                        "Trích xuất toàn bộ các câu hỏi trắc nghiệm và trả về kết quả DUY NHẤT dưới dạng một mảng JSON (JSON array) "
-                        "với cấu trúc chuẩn như mẫu sau, không kèm theo văn bản giải thích nào khác:\n"
-                        + json_example + "\n\n"
-                        "(Lưu ý: Trường \"answer\" là đáp án đúng nếu có trong đề, nếu không có hãy để trống hoặc đoán dựa trên nội dung).\n\n"
-                        "Nội dung đề thi:\n" + file_content
-                    )
-
-                    # Sử dụng mô hình chuẩn mới nhất llama-3.1-8b-instant của Groq
-                    chat_completion = client.chat.completions.create(
-                        messages=[
-                            {"role": "system", "content": "Bạn là chuyên gia trích xuất dữ liệu đề thi sang định dạng JSON chính xác."},
-                            {"role": "user", "content": prompt}
-                        ],
-                        model="llama-3.1-8b-instant",
-                    )
-                    response_text = chat_completion.choices[0].message.content.strip()
-
-                    # Xử lý chuỗi JSON kết quả
-                    if response_text.startswith("```json"):
-                        response_text = response_text[7:]
-                    if response_text.endswith("```"):
-                        response_text = response_text[:-3]
-
-                    parsed_data = json.loads(response_text.strip())
-                    if isinstance(parsed_data, dict):
-                        for key, val in parsed_data.items():
-                            if isinstance(val, list):
-                                parsed_data = val
-                                break
-
-                    st.session_state["quiz_data"] = parsed_data
-                    st.success("Đã xử lý thành công!")
-
-                except Exception as e:
-                    st.error(f"Đã có lỗi xảy ra khi xử lý file: {e}")
-
-    # Hiển thị giao diện bài thi kiểu Azota
-    if "quiz_data" in st.session_state:
-        st.markdown("---")
-        st.subheader("📝 Giao diện xem trước đề thi (Giống Azota)")
-        
-        user_answers = {}
-        with st.form("quiz_form"):
+        submitted_exam = st.form_submit_button("Nộp bài")
+        if submitted_exam:
+            total_score = 0
+            total_questions = len(st.session_state["quiz_data"])
+            
             for item in st.session_state["quiz_data"]:
-                q_id = item.get('id', 1)
-                q_text = item.get('question', '')
-                options_dict = item.get('options', {})
-                
-                st.markdown(f"**Câu {q_id}: {q_text}**")
-                options_list = [
-                    f"A. {options_dict.get('A', '')}", 
-                    f"B. {options_dict.get('B', '')}", 
-                    f"C. {options_dict.get('C', '')}", 
-                    f"D. {options_dict.get('D', '')}"
-                ]
-                
-                choice = st.radio(
-                    f"Chọn đáp án câu {q_id}", 
-                    options_list, 
-                    key=f"q_{q_id}",
-                    label_visibility="collapsed"
-                )
-                user_answers[q_id] = choice[0] if choice else ""
-                st.write("")
-
-            submitted = st.form_submit_button("Nộp bài")
-            if submitted:
-                score = 0
-                total = len(st.session_state["quiz_data"])
-                for item in st.session_state["quiz_data"]:
-                    q_id = item.get('id', 1)
-                    if user_answers.get(q_id) == item.get('answer'):
-                        score += 1
-                st.balloons()
-                st.metric(label="Kết quả của bạn", value=f"{score}/{total}")
-
-except Exception as e:
-    st.error(f"Lỗi khởi tạo hệ thống: {e}")
+                q_id = item.get('id')
+                correct_ans = str(item.get('answer', '')).strip().upper()
+                if user_selections.get(q_id) == correct_ans:
+                    total_score += 1
+                    
+            st.balloons()
+            st.metric(label="Kết quả bài làm", value=f"{total_score} / {total_questions} câu đúng")
