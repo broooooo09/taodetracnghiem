@@ -64,13 +64,13 @@ try:
                         "Nội dung đề thi:\n" + file_content
                     )
 
-                    # Sử dụng mô hình chuẩn llama3-8b-8192 của Groq
+                    # Sử dụng mô hình chuẩn mới nhất llama-3.1-8b-instant của Groq
                     chat_completion = client.chat.completions.create(
                         messages=[
                             {"role": "system", "content": "Bạn là chuyên gia trích xuất dữ liệu đề thi sang định dạng JSON chính xác."},
                             {"role": "user", "content": prompt}
                         ],
-                        model="llama3-8b-8192",
+                        model="llama-3.1-8b-instant",
                     )
                     response_text = chat_completion.choices[0].message.content.strip()
 
