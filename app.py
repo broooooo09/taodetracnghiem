@@ -90,7 +90,12 @@ def make_quiz(source_text, count, difficulty, topic, model, question_types):
     types_desc = ", ".join(question_types)
     prompt = f"""
 Bạn là giáo viên tạo đề kiểm tra bằng tiếng Việt.
-Hãy tạo đúng {count} câu hỏi dựa trên tài liệu bên dưới.
+QUY TẮC BẮT BUỘC: 100% câu hỏi, đáp án và thông tin phải được lấy TRỰC TIẾP và HOÀN TOÀN từ phần "TÀI LIỆU" được cung cấp bên dưới. 
+- Tuyệt đối KHÔNG được tự bịa đặt thông tin.
+- Tuyệt đối KHÔNG được dùng kiến thức bên ngoài tài liệu.
+- Mọi dữ liệu phải tuân thủ đúng nội dung tài liệu, không thêm bớt hoặc suy diễn sai lệch ý nghĩa của tài liệu gốc.
+
+Hãy tạo đúng {count} câu hỏi dựa trên tài liệu trên.
 Các định dạng câu hỏi được phép sử dụng: {types_desc}. Hãy phân bổ đều các định dạng được chọn nếu có thể.
 Chủ đề bổ sung: {topic or 'Tự xác định theo tài liệu'}.
 Độ khó: {difficulty}.
@@ -100,32 +105,32 @@ Chỉ trả về JSON hợp lệ, không Markdown, theo cấu trúc sau:
   "questions": [
     {{
       "type": "multiple_choice",
-      "question": "Nội dung câu hỏi trắc nghiệm 4 lựa chọn",
+      "question": "Nội dung câu hỏi trắc nghiệm lấy sát tài liệu",
       "options": {{"A":"...", "B":"...", "C":"...", "D":"..."}},
       "answer": "A",
-      "explanation": "Giải thích ngắn gọn dựa trên tài liệu"
+      "explanation": "Giải thích ngắn gọn dựa hoàn toàn trên tài liệu"
     }},
     {{
       "type": "true_false",
-      "question": "Nội dung câu hỏi đúng sai",
+      "question": "Nội dung câu hỏi đúng sai lấy sát tài liệu",
       "options": {{"Đúng": "Đúng", "Sai": "Sai"}},
       "answer": "Đúng",
-      "explanation": "Giải thích ngắn gọn dựa trên tài liệu"
+      "explanation": "Giải thích ngắn gọn dựa hoàn toàn trên tài liệu"
     }},
     {{
       "type": "short_answer",
-      "question": "Nội dung câu hỏi trả lời ngắn",
-      "answer": "Từ khóa hoặc đáp án ngắn gọn",
-      "explanation": "Giải thích ngắn gọn dựa trên tài liệu"
+      "question": "Nội dung câu hỏi trả lời ngắn lấy sát tài liệu",
+      "answer": "Từ khóa chính xác có trong tài liệu",
+      "explanation": "Giải thích ngắn gọn dựa hoàn toàn trên tài liệu"
     }}
   ]
 }}
-Quy tắc:
+Quy tắc bổ sung:
 - Chỉ sử dụng các định dạng thuộc danh sách: {types_desc}.
-- multiple_choice bắt buộc có đủ 4 lựa chọn A, B, C, D và answer là 'A', 'B', 'C' hoặc 'D'.
-- true_false có options Đúng/Sai và answer là "Đúng" hoặc "Sai".
-- short_answer không cần options, answer là đáp án ngắn gọn chính xác.
-- Không hỏi thông tin không có trong tài liệu. Không lặp câu hỏi.
+- multiple_choice bắt buộc có đủ 4 lựa chọn, đáp án đúng phải căn cứ chính xác vào tài liệu.
+- true_false có options Đúng/Sai dựa hoàn toàn vào dữ liệu tài liệu.
+- short_answer có đáp án là từ khóa/cụm từ chuẩn xác xuất hiện trong tài liệu.
+- Không lặp câu hỏi.
 TÀI LIỆU:
 ---
 {source_text}
@@ -134,10 +139,10 @@ TÀI LIỆU:
     result = client.chat.completions.create(
         model=model,
         messages=[
-            {"role": "system", "content": "Bạn tạo câu hỏi kiểm tra chính xác và chỉ xuất JSON hợp lệ."},
+            {"role": "system", "content": "Bạn tạo câu hỏi kiểm tra chính xác bám sát 100% tài liệu và chỉ xuất JSON hợp lệ."},
             {"role": "user", "content": prompt},
         ],
-        temperature=0.3,
+        temperature=0.2,
         max_tokens=8192,
     )
     data = clean_json(result.choices[0].message.content or "")
@@ -201,13 +206,12 @@ def check_answer(q, chosen):
 st.markdown("""
 <div class="hero">
   <h1>🧠 AI Quiz Pro</h1>
-  <div>Tạo đề trắc nghiệm, Đúng/Sai và Trả lời ngắn từ tài liệu bằng Groq AI</div>
+  <div>Tạo đề kiểm tra 100% bám sát tài liệu bằng Groq AI</div>
 </div>
 """, unsafe_allow_html=True)
 
 with st.sidebar:
     st.header("⚙️ Cài đặt đề")
-    # Thay thế thanh trượt bằng number_input để nhập số lượng câu hỏi linh hoạt (không giới hạn cứng)
     question_count = st.number_input("Số câu hỏi", min_value=1, max_value=200, value=20, step=5)
     difficulty = st.selectbox("Độ khó", ["Cơ bản", "Trung bình", "Nâng cao", "Hỗn hợp"])
     
@@ -216,7 +220,7 @@ with st.sidebar:
     q_type_tf = st.checkbox("Đúng / Sai", value=True)
     q_type_sa = st.checkbox("Trả lời ngắn", value=True)
     
-    topic = st.text_input("Chủ đề (không bắt buộc)", placeholder="Ví dụ: Lịch sử Việt Nam")
+    topic = st.text_input("Chủ đề (không bắt buộc)", placeholder="Ví dụ: Chương 1 - Lịch sử")
     model = st.text_input("Groq model", value=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"))
     st.caption("API key chỉ đặt trong Secrets, không ghi trực tiếp vào code.")
 
@@ -224,9 +228,9 @@ tab_create, tab_quiz, tab_history = st.tabs(["📚 Tạo đề", "✍️ Làm b�
 
 with tab_create:
     st.subheader("Tạo đề từ tài liệu")
-    st.write("Tải lên PDF, DOCX, TXT hoặc MD. Tài liệu càng rõ ràng thì câu hỏi càng sát nội dung.")
+    st.write("Tải lên PDF, DOCX, TXT hoặc MD. Hệ thống sẽ giới hạn tạo câu hỏi **100% chính xác theo văn bản tài liệu**.")
     uploaded = st.file_uploader("Chọn tài liệu", type=["pdf", "docx", "txt", "md"])
-    pasted = st.text_area("Hoặc dán nội dung tài liệu vào đây", height=180, placeholder="Dán ghi chú hoặc nội dung bài học...")
+    pasted = st.text_area("Hoặc dán nội dung tài liệu vào đây", height=180, placeholder="Dán nội dung bài học...")
     
     if st.button("✨ Tạo đề bằng AI", type="primary", use_container_width=True):
         selected_types = []
@@ -246,12 +250,12 @@ with tab_create:
                 if len(source) < 50:
                     st.error("Tài liệu quá ngắn. Hãy tải file hoặc dán ít nhất vài đoạn nội dung.")
                 else:
-                    with st.spinner("Groq AI đang đọc tài liệu và tạo câu hỏi..."):
+                    with st.spinner("Groq AI đang đọc kỹ tài liệu và trích xuất câu hỏi..."):
                         quiz = make_quiz(source, int(question_count), difficulty, topic, model.strip(), selected_types)
                     st.session_state.quiz = quiz
                     st.session_state.answers = {}
                     st.session_state.submitted = False
-                    st.success(f"Đã tạo thành công {len(quiz['questions'])} câu hỏi. Mở tab “Làm bài” để bắt đầu.")
+                    st.success(f"Đã tạo thành công {len(quiz['questions'])} câu hỏi sát tài liệu. Mở tab “Làm bài” để bắt đầu.")
             except Exception as exc:
                 st.error(f"Không tạo được đề: {exc}")
                 st.info("Kiểm tra API key, tên model, kết nối mạng và nội dung file.")
@@ -295,7 +299,7 @@ with tab_quiz:
                         f"Nhập câu trả lời cho câu {i + 1}",
                         value=current if current is not None else "",
                         key=f"answer_{i}",
-                        placeholder="Nhập câu trả lời ngắn của bạn...",
+                        placeholder="Nhập câu trả lời ngắn...",
                         label_visibility="collapsed",
                     )
                     st.session_state.answers[str(i)] = choice
@@ -354,4 +358,4 @@ with tab_history:
     else:
         st.dataframe(st.session_state.history, use_container_width=True, hide_index=True)
 
-st.caption("Lưu ý: AI có thể tạo đáp án chưa chính xác tuyệt đối; hãy kiểm tra lại trước khi dùng làm đề chính thức.")
+st.caption("Lưu ý: Đề kiểm tra được hệ thống trích xuất và bám sát hoàn toàn theo dữ liệu từ file tài liệu của bạn.")
