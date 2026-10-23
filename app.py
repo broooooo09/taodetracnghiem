@@ -27,10 +27,8 @@ try:
                     doc = docx.Document(uploaded_file)
                     file_content = "\n".join([paragraph.text for paragraph in doc.paragraphs])
 
-                    prompt = f"""
-                    Hãy đọc kỹ nội dung đề thi trắc nghiệm dưới đây. 
-                    Trích xuất toàn bộ các câu hỏi trắc nghiệm và trả về kết quả DUY NHẤT dưới dạng một mảng JSON (JSON array) với cấu trúc chuẩn sau đây, không kèm theo văn bản giải thích nào khác:
-                    [
+                    # Xây dựng prompt an toàn không bị lỗi ký tự ngoặc nhọn
+                    json_example = """[
                       {
                         "id": 1,
                         "question": "Nội dung câu hỏi?",
@@ -40,14 +38,18 @@ try:
                           "C": "Đáp án C",
                           "D": "Đáp án D"
                         },
-                        "answer": "A" 
+                        "answer": "A"
                       }
-                    ]
-                    (Lưu ý: Trường "answer" là đáp án đúng nếu có trong đề, nếu không có hãy để trống hoặc đoán dựa trên nội dung).
+                    ]"""
 
-                    Nội dung đề thi:
-                    {file_content}
-                    """
+                    prompt = (
+                        "Hãy đọc kỹ nội dung đề thi trắc nghiệm dưới đây. "
+                        "Trích xuất toàn bộ các câu hỏi trắc nghiệm và trả về kết quả DUY NHẤT dưới dạng một mảng JSON (JSON array) "
+                        "với cấu trúc chuẩn như mẫu sau, không kèm theo văn bản giải thích nào khác:\n"
+                        + json_example + "\n\n"
+                        "(Lưu ý: Trường \"answer\" là đáp án đúng nếu có trong đề, nếu không có hãy để trống hoặc đoán dựa trên nội dung).\n\n"
+                        "Nội dung đề thi:\n" + file_content
+                    )
 
                     response = client.models.generate_content(
                         model="gemini-3.8-flash",
