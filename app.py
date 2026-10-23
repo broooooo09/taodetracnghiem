@@ -101,17 +101,16 @@ def make_quiz(source_text, count, difficulty, topic, model):
         raise ValueError("Chưa có Groq API key trong code.")
     client = Groq(api_key=api_key)
     
-    # Mở rộng dung lượng đọc file lên 35000 ký tự để quét được toàn bộ các câu hỏi trong file lớn
     source_text = source_text[:35000]
     
     prompt = f"""
-Tài liệu dưới đây là một ngân hàng câu hỏi/đề thi trắc nghiệm. 
+Tài liệu dưới đây là một ngân hàng câu hỏi trắc nghiệm. 
 Nhiệm vụ của bạn là đọc và TRÍCH XUẤT chính xác **{count} câu hỏi trắc nghiệm** (có đủ 4 lựa chọn A, B, C, D) từ tài liệu này. 
 
 QUY TẮC BẮT BUỘC:
 1. Trích xuất đúng số lượng {count} câu hỏi (hoặc tối đa có thể dựa trên tài liệu nếu tài liệu ít hơn).
 2. Định dạng bắt buộc: Trắc nghiệm 4 lựa chọn (A, B, C, D).
-3. 100% nội dung câu hỏi, đáp án đúng phải căn cứ chính xác vào tài liệu, tuyệt đối không bịa đặt.
+3. Về đáp án đúng (`answer`): Nếu tài liệu có chỉ định sẵn đáp án, hãy sử dụng đáp án đó. Nếu tài liệu không ghi rõ đáp án, hãy tự động phân tích nội dung câu hỏi và chọn ra đáp án đúng nhất (A, B, C hoặc D) dựa trên kiến thức chuẩn xác, không được để trống.
 4. Độ khó: {difficulty}.
 5. Chủ đề: {topic or 'Tự xác định theo tài liệu'}.
 
@@ -123,7 +122,7 @@ Chỉ trả về JSON hợp lệ, đúng cấu trúc sau:
       "question": "Nội dung câu hỏi trắc nghiệm",
       "options": {{"A":"...", "B":"...", "C":"...", "D":"..."}},
       "answer": "A",
-      "explanation": "Giải thích ngắn gọn dựa trên tài liệu"
+      "explanation": "Giải thích ngắn gọn cho đáp án"
     }}
   ]
 }}
@@ -133,13 +132,12 @@ TÀI LIỆU:
 {source_text}
 ---
 """
-    # Tính toán max_tokens linh hoạt dựa trên số lượng câu hỏi để không bị cắt cụt giữa chừng
     dynamic_max_tokens = min(8192, int(count) * 160 + 1000)
     
     result = client.chat.completions.create(
         model=model,
         messages=[
-            {"role": "system", "content": "Bạn là chuyên gia trích xuất đề thi. Hãy lấy chính xác các câu hỏi trắc nghiệm và trả về JSON chuẩn xác."},
+            {"role": "system", "content": "Bạn là chuyên gia trích xuất đề thi. Hãy lấy chính xác các câu hỏi trắc nghiệm, tự điền đáp án chuẩn xác nếu file chưa có, và trả về JSON chuẩn."},
             {"role": "user", "content": prompt},
         ],
         temperature=0.1,
@@ -180,24 +178,23 @@ def check_answer(q, chosen):
 st.markdown("""
 <div class="hero">
   <h1>🧠 AI Trích Xuất Đề Trắc Nghiệm</h1>
-  <div>Hệ thống quét và lấy trọn vẹn số lượng câu hỏi trắc nghiệm từ file của bạn</div>
+  <div>Hệ thống quét, lấy trọn vẹn câu hỏi và tự động gán đáp án chính xác từ file của bạn</div>
 </div>
 """, unsafe_allow_html=True)
 
 with st.sidebar:
     st.header("⚙️ Cài đặt đề")
-    # Cho phép người dùng chọn chính xác số lượng câu hỏi muốn lấy từ file lớn
     question_count = st.number_input("Số lượng câu hỏi muốn lấy", min_value=5, max_value=150, value=30, step=5)
     difficulty = st.selectbox("Độ khó", ["Giữ nguyên như tài liệu", "Cơ bản", "Trung bình", "Nâng cao"])
     topic = st.text_input("Chủ đề (không bắt buộc)", placeholder="Ví dụ: Bài 1 - 4")
     model = st.text_input("Groq model", value=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"))
-    st.info("💡 **Mẹo:** Bạn có thể tăng 'Số lượng câu hỏi muốn lấy' lên (ví dụ 50, 80 hoặc 100 câu) để trích xuất gần hết các câu có trong file.")
+    st.info("💡 **Mẹo:** Nếu file của bạn chưa có sẵn đáp án, AI sẽ tự động phân tích và tìm ra đáp án đúng nhất cho từng câu.")
 
 tab_create, tab_quiz, tab_history = st.tabs(["📚 Tạo đề", "✍️ Làm bài", "📊 Lịch sử phiên"])
 
 with tab_create:
     st.subheader("Trích xuất đề từ tài liệu có sẵn")
-    st.write("Tải lên file Word/PDF chứa bộ câu hỏi. Hệ thống sẽ quét và trích xuất đúng số lượng câu hỏi trắc nghiệm bạn muốn.")
+    st.write("Tải lên file Word/PDF chứa bộ câu hỏi. Hệ thống sẽ quét, trích xuất đúng số lượng câu và xác định đáp án.")
     uploaded = st.file_uploader("Chọn tài liệu", type=["pdf", "docx", "txt", "md"])
     pasted = st.text_area("Hoặc dán nội dung tài liệu vào đây", height=180, placeholder="Dán nội dung câu hỏi...")
     
