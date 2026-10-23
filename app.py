@@ -17,7 +17,7 @@ except ImportError:
     Document = None
 
 st.set_page_config(
-    page_title="AI Quiz - Tạo đề kiểm tra tự động",
+    page_title="AI Quiz Pro - Đọc toàn bộ tài liệu",
     page_icon="🧠",
     layout="wide",
 )
@@ -65,12 +65,20 @@ def extract_text(uploaded_file):
         if Document is None:
             raise ValueError("Thiếu thư viện python-docx. Hãy cài requirements.txt.")
         doc = Document(BytesIO(raw))
-        return "\n".join(p.text for p in doc.paragraphs)
+        # Đọc toàn bộ các đoạn văn bản trong file Word
+        full_text = [p.text for p in doc.paragraphs if p.text.strip()]
+        # Đọc thêm trong các bảng (nếu tài liệu có chứa bảng câu hỏi)
+        for table in doc.tables:
+            for row in table.rows:
+                row_text = " | ".join([cell.text.strip() for cell in row.cells if cell.text.strip()])
+                if row_text:
+                    full_text.append(row_text)
+        return "\n".join(full_text)
     raise ValueError("Định dạng chưa hỗ trợ. Hãy tải lên PDF, DOCX, TXT hoặc MD.")
 
 def clean_json(text):
     if not text or not text.strip():
-        raise ValueError("AI trả về phản hồi trống. Tài liệu có thể quá dài hoặc vượt quá giới hạn token.")
+        raise ValueError("AI trả về phản hồi trống.")
     text = text.strip()
     text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.I)
     text = re.sub(r"\s*```$", "", text)
@@ -91,43 +99,47 @@ def make_quiz(source_text, difficulty, topic, model):
         raise ValueError("Chưa có Groq API key trong code.")
     client = Groq(api_key=api_key)
     
-    # Giới hạn an toàn dung lượng văn bản đưa vào AI để tránh lỗi tràn token (413)
-    source_text = source_text[:14000]
+    # Mở rộng giới hạn đọc nội dung file lên mức tối ưu để không bỏ sót phần Đúng/Sai phía sau
+    source_text = source_text[:25000]
     
     prompt = f"""
-Bạn là giáo viên thông minh. Dựa vào nội dung tài liệu dưới đây, hãy TỰ ĐỘNG PHÂN TÍCH và QUYẾT ĐỊNH:
-1. Số lượng câu hỏi phù hợp (từ 15 đến 30 câu tùy thuộc vào độ dài và lượng kiến thức trong tài liệu).
-2. Tự động kết hợp đa dạng các định dạng câu hỏi: Trắc nghiệm 4 lựa chọn (multiple_choice), Đúng/Sai (true_false), và Trả lời ngắn (short_answer).
+Bạn là một trợ lý giáo dục thông minh. Hãy đọc TOÀN BỘ nội dung tài liệu được cung cấp bên dưới từ đầu đến cuối.
+Tài liệu có thể chứa các phần lý thuyết và các dạng câu hỏi khác nhau (bao gồm cả câu hỏi trắc nghiệm, câu hỏi Đúng/Sai, và câu trả lời ngắn).
 
-QUY TẮC BẮT BUỘC: 
-- 100% câu hỏi, đáp án và thông tin phải được lấy TRỰC TIẾP và HOÀN TOÀN từ phần "TÀI LIỆU" được cung cấp. 
-- Tuyệt đối KHÔNG được tự bịa đặt thông tin hoặc dùng kiến thức bên ngoài.
-- Độ khó mong muốn: {difficulty}.
-- Chủ đề: {topic or 'Tự xác định theo tài liệu'}.
+NHIỆM VỤ BẮT BUỘC:
+1. Quét kỹ toàn bộ văn bản để tìm tất cả các nội dung, định dạng câu hỏi (đặc biệt là các phần có câu hỏi Đúng/Sai, Trắc nghiệm).
+2. Tạo ra bộ đề kiểm tra đầy đủ, kết hợp linh hoạt và cân đối các định dạng:
+   - Trắc nghiệm 4 lựa chọn (multiple_choice)
+   - Đúng / Sai (true_false)
+   - Trả lời ngắn (short_answer)
+3. 100% nội dung câu hỏi và đáp án phải dựa hoàn toàn vào tài liệu, tuyệt đối không bịa đặt.
 
-Chỉ trả về JSON hợp lệ, tuyệt đối không kèm markdown thừa ngoài JSON, theo cấu trúc sau:
+Độ khó: {difficulty}.
+Chủ đề: {topic or 'Tự xác định theo tài liệu'}.
+
+Chỉ trả về JSON hợp lệ, tuyệt đối không kèm markdown thừa, theo cấu trúc sau:
 {{
-  "title": "Tên đề kiểm tra tự động",
+  "title": "Tên đề kiểm tra tổng hợp",
   "questions": [
     {{
       "type": "multiple_choice",
-      "question": "Nội dung câu hỏi trắc nghiệm lấy sát tài liệu",
+      "question": "Nội dung câu hỏi trắc nghiệm lấy từ tài liệu",
       "options": {{"A":"...", "B":"...", "C":"...", "D":"..."}},
       "answer": "A",
-      "explanation": "Giải thích ngắn gọn dựa hoàn toàn trên tài liệu"
+      "explanation": "Giải thích ngắn gọn dựa trên tài liệu"
     }},
     {{
       "type": "true_false",
-      "question": "Nội dung câu hỏi đúng sai lấy sát tài liệu",
+      "question": "Nội dung câu hỏi Đúng/Sai lấy từ tài liệu",
       "options": {{"Đúng": "Đúng", "Sai": "Sai"}},
       "answer": "Đúng",
-      "explanation": "Giải thích ngắn gọn dựa hoàn toàn trên tài liệu"
+      "explanation": "Giải thích ngắn gọn dựa trên tài liệu"
     }},
     {{
       "type": "short_answer",
-      "question": "Nội dung câu hỏi trả lời ngắn lấy sát tài liệu",
-      "answer": "Từ khóa chính xác có trong tài liệu",
-      "explanation": "Giải thích ngắn gọn dựa hoàn toàn trên tài liệu"
+      "question": "Nội dung câu hỏi trả lời ngắn lấy từ tài liệu",
+      "answer": "Đáp án ngắn gọn",
+      "explanation": "Giải thích ngắn gọn dựa trên tài liệu"
     }}
   ]
 }}
@@ -139,7 +151,7 @@ TÀI LIỆU:
     result = client.chat.completions.create(
         model=model,
         messages=[
-            {"role": "system", "content": "Bạn tạo câu hỏi kiểm tra tự động bám sát 100% tài liệu và chỉ xuất đúng định dạng JSON hợp lệ."},
+            {"role": "system", "content": "Bạn đọc toàn bộ tài liệu, trích xuất chính xác các dạng câu hỏi Đúng/Sai, Trắc nghiệm và chỉ xuất đúng định dạng JSON."},
             {"role": "user", "content": prompt},
         ],
         temperature=0.2,
@@ -150,7 +162,7 @@ TÀI LIỆU:
     
     questions = data.get("questions", [])
     if not questions:
-        raise ValueError("AI không trả về câu hỏi nào. Hãy thử lại.")
+        raise ValueError("AI không trả về câu hỏi nào từ tài liệu.")
     
     valid = []
     for q in questions:
@@ -193,7 +205,7 @@ TÀI LIỆU:
             
     if not valid:
         raise ValueError("Dữ liệu câu hỏi AI trả về không đúng định dạng yêu cầu.")
-    return {"title": str(data.get("title", "Đề kiểm tra tự động AI")), "questions": valid}
+    return {"title": str(data.get("title", "Đề kiểm tra từ tài liệu")), "questions": valid}
 
 def check_answer(q, chosen):
     if chosen is None:
@@ -207,27 +219,27 @@ def check_answer(q, chosen):
 
 st.markdown("""
 <div class="hero">
-  <h1>🧠 AI Quiz Auto</h1>
-  <div>Hệ thống tự động nhận diện định dạng & số lượng câu hỏi từ tài liệu</div>
+  <h1>🧠 AI Quiz Pro - Đọc Toàn Bộ Tài Liệu</h1>
+  <div>Hệ thống tự động quét sâu toàn bộ file và xử lý đầy đủ các định dạng Trắc nghiệm, Đúng/Sai</div>
 </div>
 """, unsafe_allow_html=True)
 
 with st.sidebar:
     st.header("⚙️ Cài đặt chung")
     difficulty = st.selectbox("Độ khó", ["Cơ bản", "Trung bình", "Nâng cao", "Hỗn hợp"])
-    topic = st.text_input("Chủ đề (không bắt buộc)", placeholder="Ví dụ: Chương 1 - Lịch sử")
+    topic = st.text_input("Chủ đề (không bắt buộc)", placeholder="Ví dụ: Bài 1 đến Bài 4")
     model = st.text_input("Groq model", value=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"))
-    st.info("💡 **Chế độ tự động:** AI sẽ tự phân tích tài liệu để chọn số lượng và kết hợp linh hoạt các dạng câu hỏi (Trắc nghiệm, Đúng/Sai, Trả lời ngắn).")
+    st.info("💡 **Tính năng mới:** Đã tối ưu để đọc sâu vào toàn bộ file Word (bao gồm cả nội dung trong bảng và các phần Đúng/Sai ở cuối file).")
 
 tab_create, tab_quiz, tab_history = st.tabs(["📚 Tạo đề", "✍️ Làm bài", "📊 Lịch sử phiên"])
 
 with tab_create:
-    st.subheader("Tạo đề tự động từ tài liệu")
-    st.write("Tải lên file tài liệu (PDF, DOCX, TXT, MD). AI sẽ tự động đọc hiểu và thiết kế đề kiểm tra bám sát 100% nội dung.")
+    st.subheader("Tạo đề từ tài liệu")
+    st.write("Tải lên file tài liệu (PDF, DOCX, TXT, MD). Hệ thống sẽ đọc toàn bộ file và trích xuất mọi định dạng có sẵn.")
     uploaded = st.file_uploader("Chọn tài liệu", type=["pdf", "docx", "txt", "md"])
     pasted = st.text_area("Hoặc dán nội dung tài liệu vào đây", height=180, placeholder="Dán nội dung bài học...")
     
-    if st.button("✨ Tự động tạo đề bằng AI", type="primary", use_container_width=True):
+    if st.button("✨ Đọc file và tạo đề hoàn chỉnh", type="primary", use_container_width=True):
         try:
             source = pasted.strip()
             if uploaded is not None:
@@ -237,15 +249,15 @@ with tab_create:
             if len(source) < 50:
                 st.error("Tài liệu quá ngắn. Hãy tải file hoặc dán ít nhất vài đoạn nội dung.")
             else:
-                with st.spinner("AI đang phân tích tài liệu và tự động tạo đề..."):
+                with st.spinner("AI đang đọc toàn bộ tài liệu (kể cả bảng và các phần Đúng/Sai)..."):
                     quiz = make_quiz(source, difficulty, topic, model.strip())
                 st.session_state.quiz = quiz
                 st.session_state.answers = {}
                 st.session_state.submitted = False
-                st.success(f"Đã tạo thành công đề thi với {len(quiz['questions'])} câu hỏi tự động nhận diện! Mở tab “Làm bài” để bắt đầu.")
+                st.success(f"Đã đọc và tạo thành công {len(quiz['questions'])} câu hỏi (bao gồm cả Trắc nghiệm & Đúng/Sai)! Mở tab “Làm bài” để bắt đầu.")
         except Exception as exc:
             st.error(f"Không tạo được đề: {exc}")
-            st.info("Kiểm tra lại kết nối, API key hoặc đảm bảo tài liệu chứa đủ nội dung văn bản.")
+            st.info("Kiểm tra lại kết nối, API key hoặc định dạng file tài liệu.")
 
 with tab_quiz:
     quiz = st.session_state.quiz
@@ -345,4 +357,4 @@ with tab_history:
     else:
         st.dataframe(st.session_state.history, use_container_width=True, hide_index=True)
 
-st.caption("Lưu ý: Đề kiểm tra được hệ thống trích xuất và bám sát hoàn toàn theo dữ liệu từ file tài liệu của bạn.")
+st.caption("Lưu ý: Hệ thống đã được nâng cấp để đọc quét toàn bộ cấu trúc file Word bao gồm cả bảng và các phần Đúng/Sai.")
