@@ -27,7 +27,23 @@ try:
             with st.spinner("AI đang đọc và phân tích nội dung tài liệu..."):
                 try:
                     file_extension = uploaded_file.name.split('.')[-1].lower()
-                    response_text = ""
+                    file_content = ""
+
+                    # Trích xuất nội dung từ các định dạng file khác nhau
+                    if file_extension == "docx":
+                        doc = docx.Document(uploaded_file)
+                        file_content = "\n".join([p.text for p in doc.paragraphs])
+                    elif file_extension == "pdf":
+                        reader = PdfReader(uploaded_file)
+                        for page in reader.pages:
+                            text = page.extract_text()
+                            if text:
+                                file_content += text + "\n"
+                    elif file_extension == "txt":
+                        file_content = uploaded_file.getvalue().decode("utf-8")
+                    elif file_extension in ["png", "jpg", "jpeg"]:
+                        # Đối với ảnh, tạm thời thông báo hoặc chuyển đổi dạng text mô tả nếu cần
+                        file_content = "[Tệp hình ảnh được tải lên - Vui lòng ưu tiên sử dụng định dạng Word/PDF để có kết quả văn bản chính xác nhất]"
 
                     json_example = """[
                       {
@@ -44,62 +60,22 @@ try:
                     ]"""
 
                     prompt = (
-                        "Hãy đọc kỹ nội dung đề thi trắc nghiệm này. "
+                        "Hãy đọc kỹ nội dung đề thi trắc nghiệm dưới đây. "
                         "Trích xuất toàn bộ các câu hỏi trắc nghiệm và trả về kết quả DUY NHẤT dưới dạng một mảng JSON (JSON array) "
                         "với cấu trúc chuẩn như mẫu sau, không kèm theo văn bản giải thích nào khác:\n"
                         + json_example + "\n\n"
-                        "(Lưu ý: Trường \"answer\" là đáp án đúng nếu có trong đề, nếu không có hãy để trống hoặc đoán dựa trên nội dung)."
+                        "(Lưu ý: Trường \"answer\" là đáp án đúng nếu có trong đề, nếu không có hãy để trống hoặc đoán dựa trên nội dung).\n\n"
+                        "Nội dung đề thi:\n" + file_content
                     )
 
-                    # TRƯỜNG HỢP 1: NẾU LÀ FILE ẢNH
-                    if file_extension in ["png", "jpg", "jpeg"]:
-                        image_bytes = uploaded_file.getvalue()
-                        base64_image = base64.b64encode(image_bytes).decode('utf-8')
-                        
-                        chat_completion = client.chat.completions.create(
-                            messages=[
-                                {
-                                    "role": "user",
-                                    "content": [
-                                        {"type": "text", "text": prompt},
-                                        {
-                                            "type": "image_url",
-                                            "image_url": {
-                                                "url": f"data:image/{file_extension};base64,{base64_image}"
-                                            }
-                                        }
-                                    ]
-                                }
-                            ],
-                            model="llama-3.2-11b-vision-preview",
-                        )
-                        response_text = chat_completion.choices[0].message.content.strip()
-
-                    # TRƯỜNG HỢP 2: NẾU LÀ FILE VĂN BẢN (Word, PDF, TXT)
-                    else:
-                        file_content = ""
-                        if file_extension == "docx":
-                            doc = docx.Document(uploaded_file)
-                            file_content = "\n".join([p.text for p in doc.paragraphs])
-                        elif file_extension == "pdf":
-                            reader = PdfReader(uploaded_file)
-                            for page in reader.pages:
-                                text = page.extract_text()
-                                if text:
-                                    file_content += text + "\n"
-                        elif file_extension == "txt":
-                            file_content = uploaded_file.getvalue().decode("utf-8")
-
-                        full_prompt = prompt + "\n\nNội dung đề thi:\n" + file_content
-
-                        chat_completion = client.chat.completions.create(
-                            messages=[
-                                {"role": "system", "content": "Bạn là chuyên gia trích xuất dữ liệu đề thi sang định dạng JSON chính xác."},
-                                {"role": "user", "content": full_prompt}
-                            ],
-                            model="llama-3.1-8b-instant",
-                        )
-                        response_text = chat_completion.choices[0].message.content.strip()
+                    chat_completion = client.chat.completions.create(
+                        messages=[
+                            {"role": "system", "content": "Bạn là chuyên gia trích xuất dữ liệu đề thi sang định dạng JSON chính xác."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        model="llama-3.1-8b-instant",
+                    )
+                    response_text = chat_completion.choices[0].message.content.strip()
 
                     # Xử lý chuỗi JSON kết quả
                     if response_text.startswith("```json"):
