@@ -17,7 +17,7 @@ except ImportError:
     Document = None
 
 st.set_page_config(
-    page_title="AI Quiz Pro - Tối ưu Groq Free Tier",
+    page_title="AI Quiz Pro - Chuẩn hóa JSON",
     page_icon="🧠",
     layout="wide",
 )
@@ -84,7 +84,7 @@ def clean_json(text):
     if start >= 0 and end > start:
         json_str = text[start:end + 1]
     else:
-        raise ValueError("Phản hồi của AI không chứa cấu trúc JSON hợp lệ.")
+        json_str = text
     
     try:
         return json.loads(json_str)
@@ -97,23 +97,16 @@ def make_quiz(source_text, difficulty, topic, model):
         raise ValueError("Chưa có Groq API key trong code.")
     client = Groq(api_key=api_key)
     
-    # Cắt gọn nội dung tài liệu ở mức an toàn tuyệt đối (6000 ký tự) để không bị lỗi 413 (Vượt giới hạn 8000 token TPM)
+    # Giới hạn an toàn dung lượng tài liệu để tránh lỗi tràn Token
     source_text = source_text[:6000]
     
     prompt = f"""
-Bạn là một trợ lý giáo dục thông minh. Hãy đọc nội dung tài liệu dưới đây và trích xuất đầy đủ các định dạng câu hỏi (Trắc nghiệm 4 lựa chọn, Đúng/Sai, và Trả lời ngắn).
-
-NHIỆM VỤ BẮT BUỘC:
-1. Tạo ra bộ đề kiểm tra cân đối, kết hợp linh hoạt các định dạng:
-   - Trắc nghiệm (multiple_choice)
-   - Đúng / Sai (true_false)
-   - Trả lời ngắn (short_answer)
-2. 100% nội dung câu hỏi và đáp án phải dựa hoàn toàn vào tài liệu, tuyệt đối không bịa đặt.
+Bạn là một trợ lý giáo dục thông minh. Hãy đọc nội dung tài liệu dưới đây và trả về một đối tượng JSON hợp lệ chứa tiêu đề và danh sách các câu hỏi kiểm tra (bao gồm Trắc nghiệm 4 lựa chọn, Đúng/Sai, và Trả lời ngắn).
 
 Độ khó: {difficulty}.
 Chủ đề: {topic or 'Tự xác định theo tài liệu'}.
 
-Chỉ trả về JSON hợp lệ, tuyệt đối không kèm markdown thừa, theo cấu trúc sau:
+Cấu trúc JSON bắt buộc phải chính xác như sau:
 {{
   "title": "Tên đề kiểm tra tổng hợp",
   "questions": [
@@ -139,6 +132,7 @@ Chỉ trả về JSON hợp lệ, tuyệt đối không kèm markdown thừa, th
     }}
   ]
 }}
+
 TÀI LIỆU:
 ---
 {source_text}
@@ -147,11 +141,12 @@ TÀI LIỆU:
     result = client.chat.completions.create(
         model=model,
         messages=[
-            {"role": "system", "content": "Bạn đọc tài liệu, trích xuất chính xác các dạng câu hỏi Đúng/Sai, Trắc nghiệm và chỉ xuất đúng định dạng JSON."},
+            {"role": "system", "content": "Bạn là chuyên gia tạo đề thi. Bạn phải luôn trả về kết quả hoàn toàn bằng định dạng JSON hợp lệ."},
             {"role": "user", "content": prompt},
         ],
         temperature=0.2,
         max_tokens=2500,
+        response_format={"type": "json_object"},  # Ép buộc Groq trả về JSON chuẩn xác 100%
     )
     raw_content = result.choices[0].message.content or ""
     data = clean_json(raw_content)
@@ -216,7 +211,7 @@ def check_answer(q, chosen):
 st.markdown("""
 <div class="hero">
   <h1>🧠 AI Quiz Pro</h1>
-  <div>Tạo đề kiểm tra tự động - Tối ưu chống tràn giới hạn Token của Groq</div>
+  <div>Tạo đề kiểm tra tự động - Đảm bảo chuẩn định dạng JSON</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -225,13 +220,13 @@ with st.sidebar:
     difficulty = st.selectbox("Độ khó", ["Cơ bản", "Trung bình", "Nâng cao", "Hỗn hợp"])
     topic = st.text_input("Chủ đề (không bắt buộc)", placeholder="Ví dụ: Bài 1 đến Bài 4")
     model = st.text_input("Groq model", value=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"))
-    st.info("💡 **Lưu ý:** Đã tối ưu hóa lượng ký tự gửi lên để chạy mượt mà với giới hạn 8,000 TPM của gói Groq Free Tier.")
+    st.info("💡 Đã bật tính năng ép kiểu JSON (`response_format`) giúp loại bỏ hoàn toàn lỗi cú pháp.")
 
 tab_create, tab_quiz, tab_history = st.tabs(["📚 Tạo đề", "✍️ Làm bài", "📊 Lịch sử phiên"])
 
 with tab_create:
     st.subheader("Tạo đề từ tài liệu")
-    st.write("Tải lên file tài liệu (PDF, DOCX, TXT, MD). Hệ thống sẽ trích xuất đầy đủ các dạng câu hỏi Trắc nghiệm và Đúng/Sai.")
+    st.write("Tải lên file tài liệu (PDF, DOCX, TXT, MD). Hệ thống sẽ tự động trích xuất các dạng câu hỏi Trắc nghiệm và Đúng/Sai một cách chuẩn xác.")
     uploaded = st.file_uploader("Chọn tài liệu", type=["pdf", "docx", "txt", "md"])
     pasted = st.text_area("Hoặc dán nội dung tài liệu vào đây", height=180, placeholder="Dán nội dung bài học...")
     
@@ -250,7 +245,7 @@ with tab_create:
                 st.session_state.quiz = quiz
                 st.session_state.answers = {}
                 st.session_state.submitted = False
-                st.success(f"Đã tạo thành công {len(quiz['questions'])} câu hỏi (bao gồm Trắc nghiệm & Đúng/Sai)! Mở tab “Làm bài” để bắt đầu.")
+                st.success(f"Đã tạo thành công {len(quiz['questions'])} câu hỏi! Mở tab “Làm bài” để bắt đầu.")
         except Exception as exc:
             st.error(f"Không tạo được đề: {exc}")
             st.info("Kiểm tra lại kết nối hoặc định dạng file tài liệu.")
@@ -284,73 +279,4 @@ with tab_quiz:
                     choice = st.radio(
                         f"Chọn đáp án câu {i + 1}",
                         options=["Đúng", "Sai"],
-                        index=["Đúng", "Sai"].index(current) if current in ["Đúng", "Sai"] else None,
-                        key=f"answer_{i}",
-                        label_visibility="collapsed",
-                    )
-                    st.session_state.answers[str(i)] = choice
-                elif q_type == "short_answer":
-                    choice = st.text_input(
-                        f"Nhập câu trả lời cho câu {i + 1}",
-                        value=current if current is not None else "",
-                        key=f"answer_{i}",
-                        placeholder="Nhập câu trả lời ngắn...",
-                        label_visibility="collapsed",
-                    )
-                    st.session_state.answers[str(i)] = choice
-                st.divider()
-                
-            submitted = st.form_submit_button("Nộp bài và chấm điểm", type="primary", use_container_width=True)
-            
-        if submitted:
-            st.session_state.submitted = True
-            correct = sum(
-                1 for i, q in enumerate(quiz["questions"])
-                if check_answer(q, st.session_state.answers.get(str(i)))
-            )
-            score = round(correct / len(quiz["questions"]) * 10, 2)
-            st.session_state.history.insert(0, {
-                "title": quiz["title"], "correct": correct,
-                "total": len(quiz["questions"]), "score": score
-            })
-            
-        if st.session_state.submitted:
-            correct = sum(
-                1 for i, q in enumerate(quiz["questions"])
-                if check_answer(q, st.session_state.answers.get(str(i)))
-            )
-            total = len(quiz["questions"])
-            st.success(f"Kết quả: {correct}/{total} câu đúng — {correct / total * 10:.2f}/10 điểm")
-            
-            for i, q in enumerate(quiz["questions"]):
-                chosen = st.session_state.answers.get(str(i), "Chưa trả lời")
-                is_correct = check_answer(q, chosen)
-                q_type = q.get("type", "multiple_choice")
-                
-                st.markdown(f"**Câu {i + 1}:** {'✅ Đúng' if is_correct else '❌ Sai'}")
-                st.write(f"Câu trả lời của bạn: {chosen}")
-                
-                if q_type == "multiple_choice":
-                    st.write(f"Đáp án đúng: {q['answer']}. {q['options'][q['answer']]}")
-                elif q_type == "true_false":
-                    st.write(f"Đáp án đúng: {q['answer']}")
-                elif q_type == "short_answer":
-                    st.write(f"Đáp án chuẩn: {q['answer']}")
-                    
-                if q["explanation"]:
-                    st.caption(f"Giải thích: {q['explanation']}")
-                st.divider()
-                
-            if st.button("🔄 Làm lại đề này"):
-                st.session_state.answers = {}
-                st.session_state.submitted = False
-                st.rerun()
-
-with tab_history:
-    st.subheader("Lịch sử làm bài trong phiên hiện tại")
-    if not st.session_state.history:
-        st.info("Chưa có kết quả nào. Lịch sử sẽ được làm mới khi phiên ứng dụng kết thúc.")
-    else:
-        st.dataframe(st.session_state.history, use_container_width=True, hide_index=True)
-
-st.caption("Lưu ý: Ứng dụng đã được tối ưu để xử lý mượt mà trên gói Groq Free Tier.")
+                        index=["Đúng", "Sai"].index(
