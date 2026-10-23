@@ -1,40 +1,34 @@
 import streamlit as st
 from google import genai
 import json
-import tempfile
+import docx
 
 # Cấu hình trang web
 st.set_page_config(page_title="AI Tạo Đề Trắc Nghiệm kiểu Azota", layout="wide")
 
 st.title("📚 Trợ Lý AI Chuyển Đổi Đề Trắc Nghiệm")
-st.write("Tải lên file đề thi (PDF, Word, Ảnh) để AI tự động chuyển thành định dạng trắc nghiệm trực tuyến.")
+st.write("Tải lên file đề thi Word (.docx) để AI tự động chuyển thành định dạng trắc nghiệm trực tuyến.")
 
-# Tích hợp sẵn API Key trực tiếp vào code
+# API Key của bạn
 api_key = "AQ.Ab8RN6Ll0xWNHUjSJGX6iYevM-hIK7k3Hp97XJBJ_n_fMntKbw"
 
 try:
-    # Khởi tạo client Gemini với thư viện mới nhất
     client = genai.Client(api_key=api_key)
 
-    uploaded_file = st.file_uploader("Chọn file đề thi", type=["pdf", "docx", "png", "jpg", "jpeg"])
+    uploaded_file = st.file_uploader("Chọn file đề thi Word", type=["docx"])
 
     if uploaded_file is not None:
         st.success(f"Đã tải lên: {uploaded_file.name}")
         
         if st.button("🚀 Xử lý và tạo đề trắc nghiệm"):
-            with st.spinner("AI đang đọc đề và phân tích câu hỏi..."):
+            with st.spinner("AI đang đọc nội dung và phân tích câu hỏi..."):
                 try:
-                    # Lưu file tạm để tải lên Gemini API
-                    suffix = f".{uploaded_file.name.split('.')[-1]}"
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
-                        tmp_file.write(uploaded_file.getvalue())
-                        tmp_path = tmp_file.name
+                    # Đọc trực tiếp nội dung văn bản từ file Word
+                    doc = docx.Document(uploaded_file)
+                    file_content = "\n".join([paragraph.text for paragraph in doc.paragraphs])
 
-                    # Upload file lên Gemini API
-                    uploaded_media = client.files.upload(file=tmp_path)
-
-                    prompt = """
-                    Hãy đọc kỹ tài liệu/hình ảnh đề thi trắc nghiệm đính kèm. 
+                    prompt = f"""
+                    Hãy đọc kỹ nội dung đề thi trắc nghiệm dưới đây. 
                     Trích xuất toàn bộ các câu hỏi trắc nghiệm và trả về kết quả DUY NHẤT dưới dạng một mảng JSON (JSON array) với cấu trúc chuẩn sau đây, không kèm theo văn bản giải thích nào khác:
                     [
                       {
@@ -50,11 +44,14 @@ try:
                       }
                     ]
                     (Lưu ý: Trường "answer" là đáp án đúng nếu có trong đề, nếu không có hãy để trống hoặc đoán dựa trên nội dung).
+
+                    Nội dung đề thi:
+                    {file_content}
                     """
 
                     response = client.models.generate_content(
                         model="gemini-3.8-flash",
-                        contents=[uploaded_media, prompt]
+                        contents=prompt
                     )
 
                     # Xử lý chuỗi JSON kết quả
@@ -107,4 +104,4 @@ try:
                 st.metric(label="Kết quả của bạn", value=f"{score}/{total}")
 
 except Exception as e:
-    st.error(f"Lỗi khởi tạo API Key: {e}")
+    st.error(f"Lỗi khởi tạo: {e}")
