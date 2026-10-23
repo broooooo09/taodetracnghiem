@@ -97,7 +97,6 @@ def make_quiz(source_text, difficulty, topic, model):
         raise ValueError("Chưa có Groq API key trong code.")
     client = Groq(api_key=api_key)
     
-    # Giới hạn an toàn dung lượng tài liệu để tránh lỗi tràn Token
     source_text = source_text[:6000]
     
     prompt = f"""
@@ -146,7 +145,7 @@ TÀI LIỆU:
         ],
         temperature=0.2,
         max_tokens=2500,
-        response_format={"type": "json_object"},  # Ép buộc Groq trả về JSON chuẩn xác 100%
+        response_format={"type": "json_object"},
     )
     raw_content = result.choices[0].message.content or ""
     data = clean_json(raw_content)
@@ -263,20 +262,3 @@ with tab_quiz:
                 type_label = "Trắc nghiệm" if q_type == "multiple_choice" else "Đúng/Sai" if q_type == "true_false" else "Trả lời ngắn"
                 
                 st.markdown(f"**Câu {i + 1}** *({type_label})*: {q['question']}")
-                current = st.session_state.answers.get(str(i), None)
-                
-                if q_type == "multiple_choice":
-                    choice = st.radio(
-                        f"Chọn đáp án câu {i + 1}",
-                        options=["A", "B", "C", "D"],
-                        format_func=lambda key, opts=q["options"]: f"{key}. {opts[key]}",
-                        index=["A", "B", "C", "D"].index(current) if current in ["A", "B", "C", "D"] else None,
-                        key=f"answer_{i}",
-                        label_visibility="collapsed",
-                    )
-                    st.session_state.answers[str(i)] = choice
-                elif q_type == "true_false":
-                    choice = st.radio(
-                        f"Chọn đáp án câu {i + 1}",
-                        options=["Đúng", "Sai"],
-                        index=["Đúng", "Sai"].index(
