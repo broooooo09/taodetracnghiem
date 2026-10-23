@@ -1,0 +1,107 @@
+import streamlit as st
+import google.generativeai as genai
+import json
+import os
+
+# Cấu hình trang web
+st.set_page_config(page_title="AI Tạo Đề Trắc Nghiệm kiểu Azota", layout="wide")
+
+st.title("📚 Trợ Lý AI Chuyển Đổi Đề Trắc Nghiệm")
+st.write("Tải lên file đề thi (PDF, Word, Ảnh) để AI tự động chuyển thành định dạng trắc nghiệm trực tuyến.")
+
+# Nhập Gemini API Key
+api_key = st.sidebar.text_input("Nhập Google Gemini API Key của bạn:", type="password")
+
+if api_key:
+    genai.configure(api_key=api_key)
+    # Sử dụng mô hình Gemini mới nhất
+    model = genai.GenerativeModel("gemini-2.5-flash")
+
+    uploaded_file = st.file_uploader("Chọn file đề thi", type=["pdf", "docx", "png", "jpg", "jpeg"])
+
+    if uploaded_file is not None:
+        st.success(f"Đã tải lên: {uploaded_file.name}")
+        
+        if st.button("🚀 Xử lý và tạo đề trắc nghiệm"):
+            with st.spinner("AI đang đọc đề và phân tích câu hỏi..."):
+                try:
+                    # Đọc file tạm thời
+                    bytes_data = uploaded_file.read()
+                    
+                    # Gửi file lên Gemini API (hỗ trợ đa phương thức)
+                    prompt = """
+                    Hãy đọc kỹ tài liệu/hình ảnh đề thi trắc nghiệm đính kèm. 
+                    Trích xuất toàn bộ các câu hỏi trắc nghiệm và trả về kết quả DUY NHẤT dưới dạng một mảng JSON (JSON array) với cấu trúc chuẩn sau đây, không kèm theo văn bản giải thích nào khác:
+                    [
+                      {
+                        "id": 1,
+                        "question": "Nội dung câu hỏi?",
+                        "options": {
+                          "A": "Đáp án A",
+                          "B": "Đáp án B",
+                          "C": "Đáp án C",
+                          "D": "Đáp án D"
+                        },
+                        "answer": "A" 
+                      }
+                    ]
+                    (Lưu ý: Trường "answer" là đáp án đúng nếu có trong đề, nếu không có hãy để trống hoặc đoán dựa trên nội dung).
+                    """
+                    
+                    # Upload file trực tiếp vào Gemini file API
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_file.name.split('.')[-1]}") as tmp_file:
+                        tmp_file.write(bytes_data)
+                        tmp_path = tmp_file.name
+
+                    sample_file = genai.upload_file(path=tmp_path)
+                    
+                    response = model.generate_content([sample_file, prompt])
+                    
+                    # Làm sạch kết quả trả về để lấy đoạn JSON thuần túy
+                    json_text = response.text.strip()
+                    if json_text.startswith("```json"):
+                        json_text = json_text[7:]
+                    if json_text.endswith("```"):
+                        json_text = json_text[:-3]
+                        
+                    quiz_data = json.loads(json_text.strip())
+                    
+                    st.session_state["quiz_data"] = quiz_data
+                    st.success("Đã xử lý thành công!")
+
+                except Exception as e:
+                    st.error(f"Đã có lỗi xảy ra: {e}")
+
+    # Hiển thị giao diện làm bài giống Azota nếu đã có dữ liệu
+    if "quiz_data" in st.session_state:
+        st.markdown("---")
+        st.subheader("📝 Giao diện xem trước đề thi (Giống Azota)")
+        
+        user_answers = {}
+        with st.form("quiz_form"):
+            for item in st.session_state["quiz_data"]:
+                st.markdown(f"**Câu {item['id']}: {item['question']}**")
+                options_list = [f"A. {item['options']['A']}", f"B. {item['options']['B']}", f"C. {item['options']['C']}", f"D. {item['options']['D']}"]
+                
+                choice = st.radio(
+                    f"Chọn đáp án câu {item['id']}", 
+                    options_list, 
+                    key=f"q_{item['id']}",
+                    label_visibility="collapsed"
+                )
+                user_answers[item['id']] = choice[0] # Lấy ký tự A, B, C, D
+                st.write("")
+
+            submitted = st.form_submit_button("Nộp bài")
+            if submitted:
+                score = 0
+                total = len(st.session_state["quiz_data"])
+                for item in st.session_state["quiz_data"]:
+                    if user_answers.get(item['id']) == item.get('answer'):
+                        score += 1
+                st.balloons()
+                st.metric(label="Kết quả của bạn", value=f"{score}/{total}")
+
+else:
+    st.warning("Vui lòng nhập Gemini API Key ở thanh bên trái để bắt đầu.")
