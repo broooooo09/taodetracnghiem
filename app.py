@@ -17,7 +17,7 @@ except ImportError:
     Document = None
 
 st.set_page_config(
-    page_title="AI Quiz Pro - Đọc toàn bộ tài liệu",
+    page_title="AI Quiz Pro - Tối ưu Groq Free Tier",
     page_icon="🧠",
     layout="wide",
 )
@@ -65,9 +65,7 @@ def extract_text(uploaded_file):
         if Document is None:
             raise ValueError("Thiếu thư viện python-docx. Hãy cài requirements.txt.")
         doc = Document(BytesIO(raw))
-        # Đọc toàn bộ các đoạn văn bản trong file Word
         full_text = [p.text for p in doc.paragraphs if p.text.strip()]
-        # Đọc thêm trong các bảng (nếu tài liệu có chứa bảng câu hỏi)
         for table in doc.tables:
             for row in table.rows:
                 row_text = " | ".join([cell.text.strip() for cell in row.cells if cell.text.strip()])
@@ -99,20 +97,18 @@ def make_quiz(source_text, difficulty, topic, model):
         raise ValueError("Chưa có Groq API key trong code.")
     client = Groq(api_key=api_key)
     
-    # Mở rộng giới hạn đọc nội dung file lên mức tối ưu để không bỏ sót phần Đúng/Sai phía sau
-    source_text = source_text[:25000]
+    # Cắt gọn nội dung tài liệu ở mức an toàn tuyệt đối (6000 ký tự) để không bị lỗi 413 (Vượt giới hạn 8000 token TPM)
+    source_text = source_text[:6000]
     
     prompt = f"""
-Bạn là một trợ lý giáo dục thông minh. Hãy đọc TOÀN BỘ nội dung tài liệu được cung cấp bên dưới từ đầu đến cuối.
-Tài liệu có thể chứa các phần lý thuyết và các dạng câu hỏi khác nhau (bao gồm cả câu hỏi trắc nghiệm, câu hỏi Đúng/Sai, và câu trả lời ngắn).
+Bạn là một trợ lý giáo dục thông minh. Hãy đọc nội dung tài liệu dưới đây và trích xuất đầy đủ các định dạng câu hỏi (Trắc nghiệm 4 lựa chọn, Đúng/Sai, và Trả lời ngắn).
 
 NHIỆM VỤ BẮT BUỘC:
-1. Quét kỹ toàn bộ văn bản để tìm tất cả các nội dung, định dạng câu hỏi (đặc biệt là các phần có câu hỏi Đúng/Sai, Trắc nghiệm).
-2. Tạo ra bộ đề kiểm tra đầy đủ, kết hợp linh hoạt và cân đối các định dạng:
-   - Trắc nghiệm 4 lựa chọn (multiple_choice)
+1. Tạo ra bộ đề kiểm tra cân đối, kết hợp linh hoạt các định dạng:
+   - Trắc nghiệm (multiple_choice)
    - Đúng / Sai (true_false)
    - Trả lời ngắn (short_answer)
-3. 100% nội dung câu hỏi và đáp án phải dựa hoàn toàn vào tài liệu, tuyệt đối không bịa đặt.
+2. 100% nội dung câu hỏi và đáp án phải dựa hoàn toàn vào tài liệu, tuyệt đối không bịa đặt.
 
 Độ khó: {difficulty}.
 Chủ đề: {topic or 'Tự xác định theo tài liệu'}.
@@ -151,11 +147,11 @@ TÀI LIỆU:
     result = client.chat.completions.create(
         model=model,
         messages=[
-            {"role": "system", "content": "Bạn đọc toàn bộ tài liệu, trích xuất chính xác các dạng câu hỏi Đúng/Sai, Trắc nghiệm và chỉ xuất đúng định dạng JSON."},
+            {"role": "system", "content": "Bạn đọc tài liệu, trích xuất chính xác các dạng câu hỏi Đúng/Sai, Trắc nghiệm và chỉ xuất đúng định dạng JSON."},
             {"role": "user", "content": prompt},
         ],
         temperature=0.2,
-        max_tokens=8000,
+        max_tokens=2500,
     )
     raw_content = result.choices[0].message.content or ""
     data = clean_json(raw_content)
@@ -219,8 +215,8 @@ def check_answer(q, chosen):
 
 st.markdown("""
 <div class="hero">
-  <h1>🧠 AI Quiz Pro - Đọc Toàn Bộ Tài Liệu</h1>
-  <div>Hệ thống tự động quét sâu toàn bộ file và xử lý đầy đủ các định dạng Trắc nghiệm, Đúng/Sai</div>
+  <h1>🧠 AI Quiz Pro</h1>
+  <div>Tạo đề kiểm tra tự động - Tối ưu chống tràn giới hạn Token của Groq</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -229,17 +225,17 @@ with st.sidebar:
     difficulty = st.selectbox("Độ khó", ["Cơ bản", "Trung bình", "Nâng cao", "Hỗn hợp"])
     topic = st.text_input("Chủ đề (không bắt buộc)", placeholder="Ví dụ: Bài 1 đến Bài 4")
     model = st.text_input("Groq model", value=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"))
-    st.info("💡 **Tính năng mới:** Đã tối ưu để đọc sâu vào toàn bộ file Word (bao gồm cả nội dung trong bảng và các phần Đúng/Sai ở cuối file).")
+    st.info("💡 **Lưu ý:** Đã tối ưu hóa lượng ký tự gửi lên để chạy mượt mà với giới hạn 8,000 TPM của gói Groq Free Tier.")
 
 tab_create, tab_quiz, tab_history = st.tabs(["📚 Tạo đề", "✍️ Làm bài", "📊 Lịch sử phiên"])
 
 with tab_create:
     st.subheader("Tạo đề từ tài liệu")
-    st.write("Tải lên file tài liệu (PDF, DOCX, TXT, MD). Hệ thống sẽ đọc toàn bộ file và trích xuất mọi định dạng có sẵn.")
+    st.write("Tải lên file tài liệu (PDF, DOCX, TXT, MD). Hệ thống sẽ trích xuất đầy đủ các dạng câu hỏi Trắc nghiệm và Đúng/Sai.")
     uploaded = st.file_uploader("Chọn tài liệu", type=["pdf", "docx", "txt", "md"])
     pasted = st.text_area("Hoặc dán nội dung tài liệu vào đây", height=180, placeholder="Dán nội dung bài học...")
     
-    if st.button("✨ Đọc file và tạo đề hoàn chỉnh", type="primary", use_container_width=True):
+    if st.button("✨ Tạo đề ngay", type="primary", use_container_width=True):
         try:
             source = pasted.strip()
             if uploaded is not None:
@@ -249,15 +245,15 @@ with tab_create:
             if len(source) < 50:
                 st.error("Tài liệu quá ngắn. Hãy tải file hoặc dán ít nhất vài đoạn nội dung.")
             else:
-                with st.spinner("AI đang đọc toàn bộ tài liệu (kể cả bảng và các phần Đúng/Sai)..."):
+                with st.spinner("AI đang phân tích tài liệu và tạo đề..."):
                     quiz = make_quiz(source, difficulty, topic, model.strip())
                 st.session_state.quiz = quiz
                 st.session_state.answers = {}
                 st.session_state.submitted = False
-                st.success(f"Đã đọc và tạo thành công {len(quiz['questions'])} câu hỏi (bao gồm cả Trắc nghiệm & Đúng/Sai)! Mở tab “Làm bài” để bắt đầu.")
+                st.success(f"Đã tạo thành công {len(quiz['questions'])} câu hỏi (bao gồm Trắc nghiệm & Đúng/Sai)! Mở tab “Làm bài” để bắt đầu.")
         except Exception as exc:
             st.error(f"Không tạo được đề: {exc}")
-            st.info("Kiểm tra lại kết nối, API key hoặc định dạng file tài liệu.")
+            st.info("Kiểm tra lại kết nối hoặc định dạng file tài liệu.")
 
 with tab_quiz:
     quiz = st.session_state.quiz
@@ -357,4 +353,4 @@ with tab_history:
     else:
         st.dataframe(st.session_state.history, use_container_width=True, hide_index=True)
 
-st.caption("Lưu ý: Hệ thống đã được nâng cấp để đọc quét toàn bộ cấu trúc file Word bao gồm cả bảng và các phần Đúng/Sai.")
+st.caption("Lưu ý: Ứng dụng đã được tối ưu để xử lý mượt mà trên gói Groq Free Tier.")
