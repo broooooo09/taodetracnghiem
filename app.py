@@ -47,7 +47,7 @@ if "history" not in st.session_state:
 
 def get_api_key():
     try:
-        return st.secrets.get("GROQ_API_KEY", "")
+        return st.secrets.get("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", "")
     except Exception:
         return os.getenv("GROQ_API_KEY", "")
 
