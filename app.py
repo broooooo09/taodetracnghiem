@@ -17,7 +17,7 @@ except ImportError:
     Document = None
 
 st.set_page_config(
-    page_title="AI Quiz - Tạo đề trắc nghiệm",
+    page_title="AI Quiz - Tạo đề kiểm tra",
     page_icon="🧠",
     layout="wide",
 )
@@ -85,7 +85,9 @@ def make_quiz(source_text, count, difficulty, topic, model, question_types):
             "Streamlit → Settings → Secrets."
         )
     client = Groq(api_key=api_key)
-    source_text = source_text[:40000]
+    
+    # Cắt gọn nội dung để tránh vượt giới hạn 8000 token TPM của gói Free
+    source_text = source_text[:10000]
     
     types_desc = ", ".join(question_types)
     prompt = f"""
@@ -93,7 +95,7 @@ Bạn là giáo viên tạo đề kiểm tra bằng tiếng Việt.
 QUY TẮC BẮT BUỘC: 100% câu hỏi, đáp án và thông tin phải được lấy TRỰC TIẾP và HOÀN TOÀN từ phần "TÀI LIỆU" được cung cấp bên dưới. 
 - Tuyệt đối KHÔNG được tự bịa đặt thông tin.
 - Tuyệt đối KHÔNG được dùng kiến thức bên ngoài tài liệu.
-- Mọi dữ liệu phải tuân thủ đúng nội dung tài liệu, không thêm bớt hoặc suy diễn sai lệch ý nghĩa của tài liệu gốc.
+- Mọi dữ liệu phải tuân thủ đúng nội dung tài liệu, không thêm bớt hoặc suy diễn sai lệch ý nghĩa.
 
 Hãy tạo đúng {count} câu hỏi dựa trên tài liệu trên.
 Các định dạng câu hỏi được phép sử dụng: {types_desc}. Hãy phân bổ đều các định dạng được chọn nếu có thể.
@@ -127,8 +129,8 @@ Chỉ trả về JSON hợp lệ, không Markdown, theo cấu trúc sau:
 }}
 Quy tắc bổ sung:
 - Chỉ sử dụng các định dạng thuộc danh sách: {types_desc}.
-- multiple_choice bắt buộc có đủ 4 lựa chọn, đáp án đúng phải căn cứ chính xác vào tài liệu.
-- true_false có options Đúng/Sai dựa hoàn toàn vào dữ liệu tài liệu.
+- multiple_choice bắt buộc có đủ 4 lựa chọn, đáp án đúng căn cứ chính xác vào tài liệu.
+- true_false có options Đúng/Sai dựa hoàn toàn vào tài liệu.
 - short_answer có đáp án là từ khóa/cụm từ chuẩn xác xuất hiện trong tài liệu.
 - Không lặp câu hỏi.
 TÀI LIỆU:
@@ -143,7 +145,7 @@ TÀI LIỆU:
             {"role": "user", "content": prompt},
         ],
         temperature=0.2,
-        max_tokens=8192,
+        max_tokens=3500,
     )
     data = clean_json(result.choices[0].message.content or "")
     questions = data.get("questions", [])
