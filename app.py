@@ -46,10 +46,7 @@ if "history" not in st.session_state:
     st.session_state.history = []
 
 def get_api_key():
-    try:
-        return st.secrets.get("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", "")
-    except Exception:
-        return os.getenv("GROQ_API_KEY", "")
+    return "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"
 
 def extract_text(uploaded_file):
     name = uploaded_file.name.lower()
